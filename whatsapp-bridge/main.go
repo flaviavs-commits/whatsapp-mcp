@@ -3271,6 +3271,18 @@ func main() {
 	// Create channel to track connection success
 	connected := make(chan bool, 1)
 
+	// Resolve the allow-listed roots that media_path values in /api/send must
+	// live under. See media_path.go for the rationale.
+	allowedMediaRoots, mrErr := resolveMediaRoots()
+	if mrErr != nil {
+		logger.Errorf("Failed to resolve media roots: %v", mrErr)
+		return
+	}
+	logger.Infof("Allowed media roots: %v", allowedMediaRoots)
+
+	// Start the REST server before pairing so GET /api/pairing can expose the QR.
+	startRESTServer(client, messageStore, port, bridgeToken, allowedMediaRoots)
+
 	// Add connection retry logic
 	maxRetries := 3
 	var connErr error
@@ -3362,17 +3374,6 @@ connectionSuccess:
 
 	// port and bridgeToken were already resolved above, before the connect/
 	// pairing loop, so the setup banner could print immediately.
-
-	// Resolve the allow-listed roots that media_path values in /api/send must
-	// live under. See media_path.go for the rationale.
-	allowedMediaRoots, mrErr := resolveMediaRoots()
-	if mrErr != nil {
-		logger.Errorf("Failed to resolve media roots: %v", mrErr)
-		return
-	}
-	logger.Infof("Allowed media roots: %v", allowedMediaRoots)
-
-	startRESTServer(client, messageStore, port, bridgeToken, allowedMediaRoots)
 
 	// Create a channel to keep the main goroutine alive
 	exitChan := make(chan os.Signal, 1)
