@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -76,5 +77,35 @@ func TestPairingHandlerReturnsJSON(t *testing.T) {
 	}
 	if _, err := time.Parse(time.RFC3339, body["updated_at"].(string)); err != nil {
 		t.Fatalf("updated_at not RFC3339: %v", err)
+	}
+}
+
+func TestPairingRouteRequiresToken(t *testing.T) {
+	const token = "supersecrettoken1234567890abcdef"
+	handler := newRESTMux(newTestClient(&mockLIDStore{}), newTestMessageStore(t), 8080, token, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/pairing", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("without token: status = %d, want 401", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/api/pairing", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("with token: status = %d, want 200", rec.Code)
+	}
+	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("Content-Type = %q", rec.Header().Get("Content-Type"))
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := body["state"]; !ok {
+		t.Fatalf("missing state in %v", body)
 	}
 }
