@@ -2511,6 +2511,9 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 	// On-demand history sync endpoint (see history_ondemand.go)
 	registerHistoryEndpoint(mux, auth, client, messageStore)
 
+	// Pairing state / QR endpoint
+	mux.HandleFunc("/api/pairing", auth(pairingHandler(pairing)))
+
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -3219,6 +3222,7 @@ func main() {
 
 		case *events.LoggedOut:
 			logger.Warnf("⚠️  Device logged out, please scan QR code to log in again")
+			pairing.setLoggedOut()
 
 		case *events.Disconnected:
 			logger.Warnf("⚠️  Disconnected from WhatsApp servers, will attempt reconnection...")
@@ -3302,12 +3306,14 @@ func main() {
 
 			// Print QR codes for pairing with the phone.
 			switch renderPairingQRCodes(qrChan, os.Stdout, func(code string, w io.Writer) {
+				pairing.setQR(code)
 				qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
 			}) {
 			case pairingQRSucceeded:
 				connected <- true
 			case pairingQRTimedOut:
 				logger.Warnf("QR code timed out")
+				pairing.setTimedOut()
 			case pairingQRChannelClosed:
 			}
 
@@ -3350,6 +3356,7 @@ connectionSuccess:
 		logger.Errorf("Failed to establish stable connection")
 		os.Exit(1)
 	}
+	pairing.setConnected(client.Store.ID.String())
 
 	fmt.Println("\n✓ Connected to WhatsApp! Type 'help' for commands.")
 
