@@ -1,0 +1,165 @@
+name: felixo-sync-build
+
+# Mantém a branch felixo rebaseada no original (verygoodplugins/whatsapp-mcp),
+# roda os testes e publica os binários Windows/macOS do bridge.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: felixo-sync-build
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      changed: ${{ steps.meta.outputs.changed }}
+      sha: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: felixo
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: whatsapp-bridge/go.mod
+          cache-dependency-path: whatsapp-bridge/go.sum
+
+      - name: Rebase em cima do original
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/verygoodplugins/whatsapp-mcp.git
+          git fetch upstream
+          git rebase upstream/main
+
+      - name: Testes do bridge
+        working-directory: whatsapp-bridge
+        env:
+          CGO_ENABLED: '1'
+        run: go test ./...
+
+      - name: Publica felixo rebaseada
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/felixo)" ]; then
+            git push --force-with-lease=felixo:"$(git rev-parse origin/felixo)" origin felixo
+          else
+            echo "felixo já está atualizada"
+          fi
+
+      - name: Calcula versão e mudança
+        id: meta
+        run: |
+          version=$(jq -r '.["."]' .release-please-manifest.json)
+          sha=$(git rev-parse HEAD)
+          last_tag=$(git tag --list '*-pairing.*' --sort=-creatordate | head -n1)
+          changed=true
+          if [ -n "$last_tag" ] && [ "$(git rev-list -n1 "$last_tag")" = "$sha" ]; then
+            changed=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "versão=$version sha=$sha última_tag=${last_tag:-nenhuma} changed=$changed"
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            asset: whatsapp-bridge-windows-amd64.exe
+          - os: macos-14
+            asset: whatsapp-bridge-darwin-arm64
+            goos: darwin
+            goarch: arm64
+          # macos-13 (Intel) foi aposentado: amd64 é compilado em runner arm64.
+          - os: macos-14
+            asset: whatsapp-bridge-darwin-amd64
+            goos: darwin
+            goarch: amd64
+            cc: clang -arch x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: whatsapp-bridge/go.mod
+          cache-dependency-path: whatsapp-bridge/go.sum
+
+      - name: gcc (MinGW) no Windows
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          install: mingw-w64-x86_64-gcc
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: whatsapp-bridge
+        env:
+          CGO_ENABLED: '1'
+        run: go build -o "../${{ matrix.asset }}" .
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        working-directory: whatsapp-bridge
+        env:
+          CGO_ENABLED: '1'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc || 'clang' }}
+        run: go build -o "../${{ matrix.asset }}" .
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: [sync, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Empacota, calcula checksums e publica
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.sync.outputs.version }}-pairing.${{ github.run_number }}
+          SHA: ${{ needs.sync.outputs.sha }}
+        run: |
+          set -euo pipefail
+          (cd whatsapp-mcp-server && zip -r -q "$GITHUB_WORKSPACE/dist/whatsapp-mcp-server.zip" . -x '.venv/*' '*/__pycache__/*' '__pycache__/*' '*.pyc')
+          cd dist
+          sha256sum whatsapp-bridge-windows-amd64.exe whatsapp-bridge-darwin-arm64 whatsapp-bridge-darwin-amd64 whatsapp-mcp-server.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release create "$TAG" \
+            whatsapp-bridge-windows-amd64.exe whatsapp-bridge-darwin-arm64 whatsapp-bridge-darwin-amd64 whatsapp-mcp-server.zip SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SHA" \
+            --title "$TAG" \
+            --notes "Bridge com patch de pareamento (GET /api/pairing) sobre o original v${{ needs.sync.outputs.version }}."
