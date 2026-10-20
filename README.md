@@ -802,7 +802,7 @@ curl -X POST http://127.0.0.1:8080/api/check \
 | `phones` | yes | 1 to 50 numbers, country code + number, digits only (no `+`) |
 
 `jid` is the phone JID (or the LID when WhatsApp hides the number). The bridge
-must be connected (`503` otherwise); a failed lookup returns `502`. Only the
+must be connected and paired (`503` otherwise); a failed lookup returns `502`. Only the
 count of numbers is logged, never the numbers.
 
 ### Requesting history for a single chat (on-demand)
