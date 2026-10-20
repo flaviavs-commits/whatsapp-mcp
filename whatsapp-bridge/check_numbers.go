@@ -90,7 +90,7 @@ func checkNumbersHandler(isConnected func() bool, check numberChecker) http.Hand
 			queries[i] = "+" + p // IsOnWhatsApp wants the international format
 		}
 		if !isConnected() {
-			writeCheckResponse(w, http.StatusServiceUnavailable, CheckNumbersResponse{Message: "Not connected to WhatsApp"})
+			writeCheckResponse(w, http.StatusServiceUnavailable, CheckNumbersResponse{Message: "Not connected to WhatsApp (or not paired yet)"})
 			return
 		}
 

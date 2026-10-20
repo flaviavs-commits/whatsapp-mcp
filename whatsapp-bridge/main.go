@@ -2515,7 +2515,9 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 	mux.HandleFunc("/api/pairing", auth(pairingHandler(pairing)))
 
 	// Which phone numbers are on WhatsApp, and their canonical JIDs (see check_numbers.go)
-	mux.HandleFunc("/api/check", auth(checkNumbersHandler(client.IsConnected, client.IsOnWhatsApp)))
+	// While waiting for the QR the client is connected but not logged in: the lookup would only time out.
+	ready := func() bool { return client.IsConnected() && client.IsLoggedIn() }
+	mux.HandleFunc("/api/check", auth(checkNumbersHandler(ready, client.IsOnWhatsApp)))
 
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
