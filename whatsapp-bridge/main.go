@@ -2399,6 +2399,9 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 	// Pairing state / QR endpoint
 	mux.HandleFunc("/api/pairing", auth(pairingHandler(pairing)))
 
+	// Which phone numbers are on WhatsApp, and their canonical JIDs (see check_numbers.go)
+	mux.HandleFunc("/api/check", auth(checkNumbersHandler(client.IsConnected, client.IsOnWhatsApp)))
+
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

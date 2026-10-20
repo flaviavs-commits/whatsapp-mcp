@@ -774,6 +774,37 @@ Caveats:
 - **Only effective on a fresh pair.** With `whatsapp.db` already present, no new pair handshake fires and the flag is a no-op.
 - **Messages the phone has deleted are not recoverable** — auto-expire, low-storage cleanup, and manual delete all leave no trace for the phone to share.
 
+### Checking which numbers are on WhatsApp
+
+Before sending to a number nobody has chatted with yet, ask WhatsApp whether it
+is registered and what its canonical JID is. Do not build the JID from the
+number you have: Brazilian mobiles registered before the extra 9 was added are
+often still `553177776666` on WhatsApp while contact lists carry
+`5531977776666`, and a message sent to a number that is not on WhatsApp can be
+accepted without ever being delivered.
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/check \
+  -H "Authorization: Bearer $(cat whatsapp-bridge/store/.bridge-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"phones": ["5531977776666", "5511900000000"]}'
+```
+
+```json
+{"success": true, "results": [
+  {"phone": "5531977776666", "exists": true, "jid": "553177776666@s.whatsapp.net"},
+  {"phone": "5511900000000", "exists": false, "jid": ""}
+]}
+```
+
+| Field | Required | Description |
+| --------- | -------- | ------------------------------------------------------ |
+| `phones` | yes | 1 to 50 numbers, country code + number, digits only (no `+`) |
+
+`jid` is the phone JID (or the LID when WhatsApp hides the number). The bridge
+must be connected (`503` otherwise); a failed lookup returns `502`. Only the
+count of numbers is logged, never the numbers.
+
 ### Requesting history for a single chat (on-demand)
 
 `--full-history-pair` only applies to a fresh pair, so recovering a gap in one
@@ -895,6 +926,7 @@ flowchart LR
         REACT["/api/react"]
         TYPE["/api/typing"]
         HIST["/api/history"]
+        CHECK["/api/check"]
         HEALTH["/api/health"]
     end
 
