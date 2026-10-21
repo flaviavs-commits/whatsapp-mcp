@@ -2519,6 +2519,9 @@ func newRESTMux(client *whatsmeow.Client, messageStore *MessageStore, port int, 
 	ready := func() bool { return client.IsConnected() && client.IsLoggedIn() }
 	mux.HandleFunc("/api/check", auth(checkNumbersHandler(ready, client.IsOnWhatsApp)))
 
+	// Who created a group and who its admins are (see group_info.go)
+	mux.HandleFunc("/api/group-info", auth(groupInfoHandler(clientGroupInfoDeps(client, ready))))
+
 	// Health check endpoint
 	mux.HandleFunc("/api/health", auth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

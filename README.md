@@ -834,6 +834,40 @@ curl -X POST http://127.0.0.1:8080/api/check \
 must be connected and paired (`503` otherwise); a failed lookup returns `502`. Only the
 count of numbers is logged, never the numbers.
 
+### Finding a group's creator and admins
+
+To reach the people responsible for a group, ask WhatsApp who created it and
+who its admins are:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/group-info \
+  -H "Authorization: Bearer $(cat whatsapp-bridge/store/.bridge-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"chat_jid": "120363000000000001@g.us"}'
+```
+
+```json
+{"success": true, "group": {
+  "jid": "120363000000000001@g.us", "name": "Clientes VIP",
+  "created_at": "2024-03-05T12:30:00Z", "participant_count": 57,
+  "owner": {"jid": "111111111111111@lid", "phone": "5531977776666", "lid": "111111111111111@lid",
+            "name": "Ana", "is_admin": true, "is_super_admin": true, "in_group": true},
+  "admins": [
+    {"jid": "111111111111111@lid", "phone": "5531977776666", "lid": "111111111111111@lid",
+     "name": "Ana", "is_admin": true, "is_super_admin": true, "in_group": true},
+    {"jid": "5511988887777@s.whatsapp.net", "phone": "5511988887777",
+     "is_admin": true, "is_super_admin": false, "in_group": true}
+  ]}}
+```
+
+`jid` is the JID to message each person (the LID in LID-addressed groups);
+`phone` comes from WhatsApp or the local LID map and is empty when WhatsApp
+hides it. `owner` is omitted when WhatsApp does not say who created the group,
+and stays (with `in_group: false`) after the creator leaves. Super admins come
+first. The bridge must be connected and paired (`503` otherwise); `403` means
+this number is not in the group (or it no longer exists) and a failed lookup
+returns `502`. Only the number of admins is logged.
+
 ### Requesting history for a single chat (on-demand)
 
 `--full-history-pair` only applies to a fresh pair, so recovering a gap in one
@@ -956,6 +990,7 @@ flowchart LR
         TYPE["/api/typing"]
         HIST["/api/history"]
         CHECK["/api/check"]
+        GROUP["/api/group-info"]
         HEALTH["/api/health"]
     end
 
