@@ -28,6 +28,9 @@ from whatsapp import (
     get_direct_chat_by_contact as whatsapp_get_direct_chat_by_contact,
 )
 from whatsapp import (
+    get_group_info as whatsapp_get_group_info,
+)
+from whatsapp import (
     get_last_interaction as whatsapp_get_last_interaction,
 )
 from whatsapp import (
@@ -286,6 +289,26 @@ def get_direct_chat_by_contact(sender_phone_number: str) -> dict[str, Any]:
     """
     chat = whatsapp_get_direct_chat_by_contact(sender_phone_number)
     return chat
+
+
+@mcp.tool()
+def get_group_info(chat_jid: str) -> dict[str, Any]:
+    """Get who created a WhatsApp group and who its admins are (asks WhatsApp live).
+
+    Use it to find the people responsible for a group, e.g. to message the group's
+    admin. Read-only: it never sends anything. Plain members are not listed.
+
+    Args:
+        chat_jid: The group JID (ends with @g.us)
+
+    Returns:
+        {"success": True, "group": {"jid", "name", "created_at", "participant_count",
+        "owner": member (creator, may have left: in_group false), "admins": [member]}}
+        where member is {"jid" (to message them), "phone" (digits, empty when hidden),
+        "lid", "name", "is_admin", "is_super_admin", "in_group"};
+        or {"success": False, "message": "..."}.
+    """
+    return whatsapp_get_group_info(chat_jid)
 
 
 @mcp.tool()

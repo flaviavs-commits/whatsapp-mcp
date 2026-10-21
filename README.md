@@ -453,6 +453,16 @@ List all chats involving a specific contact.
 
 - `phone` (required): Phone number of the contact
 
+#### `get_group_info`
+
+Get who created a group and who its admins are. Asks WhatsApp live (read-only,
+never sends anything); plain members are not listed. The creator is still
+reported after leaving the group (`in_group: false`).
+
+**Parameters:**
+
+- `chat_jid` (required): JID of the group (ends with `@g.us`)
+
 #### `get_last_interaction`
 
 Get the last message exchanged with a contact.
@@ -994,7 +1004,7 @@ flowchart LR
         HEALTH["/api/health"]
     end
 
-    subgraph MCPTools["MCP Tools (15 total)"]
+    subgraph MCPTools["MCP Tools (18 total)"]
         direction TB
         CONT["Contact Tools<br/>search_contacts, get_contact"]
         MSG["Message Tools<br/>list_messages, send_message, etc."]

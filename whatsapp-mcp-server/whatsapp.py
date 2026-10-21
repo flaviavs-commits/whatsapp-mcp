@@ -1199,6 +1199,42 @@ def send_message(
         return False, f"Unexpected error: {str(e)}"
 
 
+GROUP_INFO_TIMEOUT = 30  # the bridge waits up to 20 s for WhatsApp
+
+
+def get_group_info(chat_jid: str) -> dict[str, Any]:
+    """Ask WhatsApp (through the bridge) who created a group and who its admins are.
+
+    Returns the bridge answer: {"success": True, "group": {...}} or
+    {"success": False, "message": "..."}.
+    """
+    if not chat_jid or not chat_jid.endswith("@g.us"):
+        return {"success": False, "message": "chat_jid must be a group JID (ending in @g.us)"}
+    try:
+        response = requests.post(
+            f"{WHATSAPP_API_BASE_URL}/group-info",
+            json={"chat_jid": chat_jid},
+            headers=_bridge_headers(),
+            timeout=GROUP_INFO_TIMEOUT,
+        )
+    except requests.RequestException as e:
+        return {"success": False, "message": f"Request error: {str(e)}"}
+    try:
+        result = response.json()
+    except ValueError:
+        result = None
+    if not isinstance(result, dict):
+        if response.status_code in (404, 405):
+            return {
+                "success": False,
+                "message": "This bridge does not support group info yet; update the bridge.",
+            }
+        return {"success": False, "message": f"Error: HTTP {response.status_code} - {response.text}"}
+    if response.status_code != 200 or result.get("success") is not True:
+        return {"success": False, "message": result.get("message") or f"Error: HTTP {response.status_code}"}
+    return {"success": True, "group": result.get("group")}
+
+
 def send_file(recipient: str, media_path: str, caption: str = "") -> tuple[bool, str]:
     """Send a media file (image, video, document) with an optional caption.
 
